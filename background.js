@@ -107,42 +107,143 @@ function displayNotification(message, type) {
 function playAudioInTab(tabId, audioData) {
   chrome.scripting.executeScript({
     target: { tabId: tabId },
-    func: playAudio,
+    func: playAudioWithControls,
     args: [audioData]
   });
 }
 
-function playAudio(audioData) {
+function playAudioWithControls(audioData) {
+  // Remove any existing notification
   const existingNote = document.getElementById("autopage-reader-notification");
   if (existingNote) existingNote.remove();
   
+  // Remove any existing player
+  const existingPlayer = document.getElementById("autopage-reader-player");
+  if (existingPlayer) existingPlayer.remove();
+  
+  // Remove any existing audio
   const existingAudio = document.getElementById("autopage-reader-audio");
   if (existingAudio) {
     existingAudio.pause();
     existingAudio.remove();
   }
   
+  // Create audio element
   const audio = new Audio(audioData);
   audio.id = "autopage-reader-audio";
   document.body.appendChild(audio);
   
-  const note = document.createElement("div");
-  note.id = "autopage-reader-notification";
-  note.style.cssText = "position:fixed;bottom:20px;right:20px;background:#27ae60;color:white;padding:12px 20px;border-radius:8px;font-family:Arial,sans-serif;font-size:14px;z-index:2147483647;box-shadow:0 4px 12px rgba(0,0,0,0.3);";
-  note.textContent = "Playing...";
-  document.body.appendChild(note);
+  // Create player UI
+  const player = document.createElement("div");
+  player.id = "autopage-reader-player";
+  player.style.cssText = "position:fixed;bottom:20px;right:20px;background:#1a1a2e;color:white;padding:12px 16px;border-radius:12px;font-family:Arial,sans-serif;font-size:14px;z-index:2147483647;box-shadow:0 4px 20px rgba(0,0,0,0.4);display:flex;align-items:center;gap:12px;";
   
-  audio.play();
+  // Status indicator
+  const status = document.createElement("div");
+  status.id = "autopage-reader-status";
+  status.style.cssText = "width:8px;height:8px;border-radius:50%;background:#27ae60;";
+  player.appendChild(status);
   
+  // Play/Pause button
+  const playPauseBtn = document.createElement("button");
+  playPauseBtn.id = "autopage-reader-playpause";
+  playPauseBtn.innerHTML = "⏸";
+  playPauseBtn.title = "Pause";
+  playPauseBtn.style.cssText = "background:#4a90d9;border:none;color:white;width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;";
+  player.appendChild(playPauseBtn);
+  
+  // Stop button
+  const stopBtn = document.createElement("button");
+  stopBtn.id = "autopage-reader-stop";
+  stopBtn.innerHTML = "⏹";
+  stopBtn.title = "Stop";
+  stopBtn.style.cssText = "background:#e74c3c;border:none;color:white;width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;";
+  player.appendChild(stopBtn);
+  
+  // Time display
+  const timeDisplay = document.createElement("span");
+  timeDisplay.id = "autopage-reader-time";
+  timeDisplay.style.cssText = "font-size:12px;color:#aaa;min-width:70px;";
+  timeDisplay.textContent = "0:00 / 0:00";
+  player.appendChild(timeDisplay);
+  
+  // Close button
+  const closeBtn = document.createElement("button");
+  closeBtn.innerHTML = "✕";
+  closeBtn.title = "Close";
+  closeBtn.style.cssText = "background:transparent;border:none;color:#888;cursor:pointer;font-size:14px;padding:4px;margin-left:4px;";
+  player.appendChild(closeBtn);
+  
+  document.body.appendChild(player);
+  
+  // Format time helper
+  function formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return mins + ":" + (secs < 10 ? "0" : "") + secs;
+  }
+  
+  // Update time display
+  audio.ontimeupdate = function() {
+    const current = formatTime(audio.currentTime);
+    const total = formatTime(audio.duration || 0);
+    timeDisplay.textContent = current + " / " + total;
+  };
+  
+  // Play/Pause functionality
+  let isPlaying = true;
+  playPauseBtn.onclick = function() {
+    if (isPlaying) {
+      audio.pause();
+      playPauseBtn.innerHTML = "▶";
+      playPauseBtn.title = "Play";
+      status.style.background = "#f39c12";
+    } else {
+      audio.play();
+      playPauseBtn.innerHTML = "⏸";
+      playPauseBtn.title = "Pause";
+      status.style.background = "#27ae60";
+    }
+    isPlaying = !isPlaying;
+  };
+  
+  // Stop functionality
+  stopBtn.onclick = function() {
+    audio.pause();
+    audio.currentTime = 0;
+    audio.remove();
+    player.remove();
+  };
+  
+  // Close button
+  closeBtn.onclick = function() {
+    audio.pause();
+    audio.remove();
+    player.remove();
+  };
+  
+  // When audio ends
   audio.onended = function() {
-    note.remove();
-    audio.remove();
+    status.style.background = "#888";
+    playPauseBtn.innerHTML = "▶";
+    playPauseBtn.title = "Play";
+    isPlaying = false;
+    setTimeout(function() {
+      player.remove();
+      audio.remove();
+    }, 3000);
   };
   
+  // Handle errors
   audio.onerror = function() {
-    note.textContent = "Error playing audio";
-    note.style.background = "#e74c3c";
-    setTimeout(function() { note.remove(); }, 5000);
-    audio.remove();
+    status.style.background = "#e74c3c";
+    timeDisplay.textContent = "Error";
+    setTimeout(function() {
+      player.remove();
+      audio.remove();
+    }, 3000);
   };
+  
+  // Start playing
+  audio.play();
 }
