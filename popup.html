@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { width: 320px; padding: 20px; font-family: Arial, sans-serif; background: #1a1a2e; color: #eee; margin: 0; }
+    .header { display: flex; align-items: center; margin-bottom: 20px; }
+    .header img { width: 32px; height: 32px; margin-right: 10px; }
+    h1 { font-size: 18px; margin: 0; color: #fff; }
+    label { display: block; margin-bottom: 6px; font-size: 13px; color: #aaa; }
+    input { width: 100%; padding: 10px; margin-bottom: 16px; border: 1px solid #333; border-radius: 6px; background: #16213e; color: #fff; font-size: 14px; box-sizing: border-box; }
+    button { width: 100%; padding: 12px; background: #4a90d9; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 600; }
+    button:hover { background: #357abd; }
+    .status { margin-top: 12px; padding: 10px; border-radius: 6px; font-size: 13px; text-align: center; }
+    .instructions { margin-top: 20px; padding-top: 16px; border-top: 1px solid #333; font-size: 12px; color: #888; }
+    .shortcut { background: #16213e; padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #4a90d9; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="icons/icon-48.png" alt="Autopage Reader">
+    <h1>Autopage Reader</h1>
+  </div>
+  <label>ElevenLabs API Key</label>
+  <input type="password" id="apiKey" placeholder="sk_...">
+  <label>Voice ID</label>
+  <input type="text" id="voiceId" placeholder="Enter Voice ID">
+  <button id="saveBtn">Save Settings</button>
+  <div id="status" class="status"></div>
+  <div class="instructions">
+    <strong>How to use:</strong><br><br>
+    1. Highlight any text on a webpage<br>
+    2. Press <span class="shortcut">Ctrl+Shift+S</span><br>
+    3. Listen to the text read aloud!
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

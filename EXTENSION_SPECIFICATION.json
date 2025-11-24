@@ -1,0 +1,235 @@
+{
+  "specification_version": "1.0",
+  "created_date": "2025-11-24",
+  "extension_name": "Autopage Reader",
+  "description": "A Chrome extension that reads highlighted text aloud using ElevenLabs AI text-to-speech",
+  
+  "overview": {
+    "purpose": "Allow users to highlight any text on a webpage and have it read aloud using high-quality AI voice synthesis",
+    "trigger": "Keyboard shortcut Ctrl+Shift+S (or Command+Shift+S on Mac)",
+    "tts_provider": "ElevenLabs API",
+    "platforms": ["Chrome", "Edge", "Brave", "Other Chromium browsers"]
+  },
+
+  "critical_lessons_learned": {
+    "lesson_1": {
+      "issue": "Chrome Manifest V3 blocks inline scripts in HTML files",
+      "symptom": "Content Security Policy violation errors, save button not working",
+      "solution": "Move ALL JavaScript from <script> tags in HTML to separate .js files and reference with <script src='file.js'></script>"
+    },
+    "lesson_2": {
+      "issue": "content_scripts in manifest.json can fail to load with cryptic errors",
+      "symptom": "Error: At least one js or css file is required for content_scripts[0]",
+      "solution": "Use programmatic script injection with chrome.scripting.executeScript() instead of content_scripts in manifest. Add 'scripting' permission."
+    },
+    "lesson_3": {
+      "issue": "File encoding issues on Windows",
+      "symptom": "Extension fails to load even when files appear correct",
+      "solution": "When creating files in Notepad, always use: Save As > All Files (*.*) > Encoding: UTF-8 (not UTF-8 with BOM)"
+    },
+    "lesson_4": {
+      "issue": "Cloud-synced folders (OneDrive, Dropbox) can interfere with Chrome extension loading",
+      "symptom": "Extension fails to load from Desktop or Documents folder",
+      "solution": "Place extension in a non-synced location like C:\\extensions\\"
+    },
+    "lesson_5": {
+      "issue": "Hidden file extensions in Windows cause wrong file types",
+      "symptom": "Files named manifest.json.txt instead of manifest.json",
+      "solution": "Enable 'File name extensions' in Windows Explorer View settings before creating files"
+    }
+  },
+
+  "file_structure": {
+    "root_folder": "autopage-reader-extension",
+    "files": [
+      {
+        "name": "manifest.json",
+        "type": "json",
+        "purpose": "Extension configuration - defines permissions, icons, scripts, keyboard shortcuts"
+      },
+      {
+        "name": "background.js",
+        "type": "javascript",
+        "purpose": "Service worker - handles keyboard shortcut, API calls to ElevenLabs, audio playback orchestration"
+      },
+      {
+        "name": "popup.html",
+        "type": "html",
+        "purpose": "Settings UI - displays when user clicks extension icon"
+      },
+      {
+        "name": "popup.js",
+        "type": "javascript",
+        "purpose": "Settings logic - saves/loads API key and Voice ID from chrome.storage"
+      },
+      {
+        "name": "icons/icon-16.png",
+        "type": "image",
+        "purpose": "Small icon for toolbar and menus"
+      },
+      {
+        "name": "icons/icon-48.png",
+        "type": "image",
+        "purpose": "Medium icon for extension management page"
+      },
+      {
+        "name": "icons/icon-128.png",
+        "type": "image",
+        "purpose": "Large icon for Chrome Web Store and installation"
+      }
+    ]
+  },
+
+  "permissions_explained": {
+    "activeTab": "Access the currently active tab to inject scripts and get selected text",
+    "storage": "Save user's API key and Voice ID locally",
+    "scripting": "Programmatically inject JavaScript into web pages for text selection and audio playback"
+  },
+
+  "api_integration": {
+    "provider": "ElevenLabs",
+    "endpoint": "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+    "method": "POST",
+    "headers": {
+      "Accept": "audio/mpeg",
+      "Content-Type": "application/json",
+      "xi-api-key": "{user_api_key}"
+    },
+    "body": {
+      "text": "{selected_text}",
+      "model_id": "eleven_turbo_v2_5",
+      "voice_settings": {
+        "stability": 0.5,
+        "similarity_boost": 0.75
+      }
+    },
+    "response": "audio/mpeg blob"
+  },
+
+  "user_flow": [
+    "1. User installs extension",
+    "2. User clicks extension icon and enters ElevenLabs API Key and Voice ID",
+    "3. User clicks Save Settings",
+    "4. User navigates to any webpage",
+    "5. User highlights text with mouse",
+    "6. User presses Ctrl+Shift+S",
+    "7. Blue notification appears: 'Generating speech...'",
+    "8. Green notification appears: 'Playing...'",
+    "9. Audio plays through browser",
+    "10. Notification disappears when audio completes"
+  ],
+
+  "complete_source_code": {
+    "manifest.json": {
+      "manifest_version": 3,
+      "name": "Autopage Reader",
+      "version": "1.0.0",
+      "description": "Highlight any text on a webpage and hear it read aloud instantly using AI-powered text-to-speech",
+      "permissions": [
+        "activeTab",
+        "storage",
+        "scripting"
+      ],
+      "action": {
+        "default_popup": "popup.html",
+        "default_title": "Autopage Reader Settings",
+        "default_icon": {
+          "16": "icons/icon-16.png",
+          "48": "icons/icon-48.png",
+          "128": "icons/icon-128.png"
+        }
+      },
+      "background": {
+        "service_worker": "background.js"
+      },
+      "commands": {
+        "read-selection": {
+          "suggested_key": {
+            "default": "Ctrl+Shift+S",
+            "mac": "Command+Shift+S"
+          },
+          "description": "Read selected text aloud"
+        }
+      },
+      "icons": {
+        "16": "icons/icon-16.png",
+        "48": "icons/icon-48.png",
+        "128": "icons/icon-128.png"
+      }
+    },
+
+    "background.js": "chrome.commands.onCommand.addListener((command) => {\n  if (command === \"read-selection\") {\n    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {\n      const tabId = tabs[0].id;\n      \n      try {\n        const results = await chrome.scripting.executeScript({\n          target: { tabId: tabId },\n          func: getSelectedText\n        });\n        \n        const selectedText = results[0].result;\n        \n        if (selectedText && selectedText.trim().length > 0) {\n          speakText(selectedText.trim(), tabId);\n        } else {\n          showMessage(tabId, \"Please highlight some text first\", \"error\");\n        }\n      } catch (error) {\n        console.error(\"Error:\", error);\n      }\n    });\n  }\n});\n\nfunction getSelectedText() {\n  return window.getSelection().toString();\n}\n\nasync function speakText(text, tabId) {\n  const settings = await chrome.storage.local.get([\"apiKey\", \"voiceId\"]);\n  const apiKey = settings.apiKey;\n  const voiceId = settings.voiceId;\n  \n  if (!apiKey || !voiceId) {\n    showMessage(tabId, \"Please set API Key and Voice ID in extension popup\", \"error\");\n    return;\n  }\n\n  showMessage(tabId, \"Generating speech...\", \"processing\");\n\n  try {\n    const response = await fetch(\n      \"https://api.elevenlabs.io/v1/text-to-speech/\" + voiceId,\n      {\n        method: \"POST\",\n        headers: {\n          \"Accept\": \"audio/mpeg\",\n          \"Content-Type\": \"application/json\",\n          \"xi-api-key\": apiKey\n        },\n        body: JSON.stringify({\n          text: text,\n          model_id: \"eleven_turbo_v2_5\",\n          voice_settings: {\n            stability: 0.5,\n            similarity_boost: 0.75\n          }\n        })\n      }\n    );\n\n    if (!response.ok) {\n      throw new Error(\"API error: \" + response.status);\n    }\n\n    const audioBlob = await response.blob();\n    const reader = new FileReader();\n    \n    reader.onloadend = () => {\n      playAudioInTab(tabId, reader.result);\n    };\n    \n    reader.readAsDataURL(audioBlob);\n\n  } catch (error) {\n    showMessage(tabId, \"Failed: \" + error.message, \"error\");\n  }\n}\n\nfunction showMessage(tabId, message, type) {\n  chrome.scripting.executeScript({\n    target: { tabId: tabId },\n    func: displayNotification,\n    args: [message, type]\n  });\n}\n\nfunction displayNotification(message, type) {\n  const existingNote = document.getElementById(\"autopage-reader-notification\");\n  if (existingNote) existingNote.remove();\n  \n  const note = document.createElement(\"div\");\n  note.id = \"autopage-reader-notification\";\n  let bgColor = \"#333\";\n  if (type === \"error\") bgColor = \"#e74c3c\";\n  if (type === \"processing\") bgColor = \"#3498db\";\n  if (type === \"playing\") bgColor = \"#27ae60\";\n  note.style.cssText = \"position:fixed;bottom:20px;right:20px;background:\" + bgColor + \";color:white;padding:12px 20px;border-radius:8px;font-family:Arial,sans-serif;font-size:14px;z-index:2147483647;box-shadow:0 4px 12px rgba(0,0,0,0.3);\";\n  note.textContent = message;\n  document.body.appendChild(note);\n  if (type === \"error\") {\n    setTimeout(function() { note.remove(); }, 5000);\n  }\n}\n\nfunction playAudioInTab(tabId, audioData) {\n  chrome.scripting.executeScript({\n    target: { tabId: tabId },\n    func: playAudio,\n    args: [audioData]\n  });\n}\n\nfunction playAudio(audioData) {\n  const existingNote = document.getElementById(\"autopage-reader-notification\");\n  if (existingNote) existingNote.remove();\n  \n  const existingAudio = document.getElementById(\"autopage-reader-audio\");\n  if (existingAudio) {\n    existingAudio.pause();\n    existingAudio.remove();\n  }\n  \n  const audio = new Audio(audioData);\n  audio.id = \"autopage-reader-audio\";\n  document.body.appendChild(audio);\n  \n  const note = document.createElement(\"div\");\n  note.id = \"autopage-reader-notification\";\n  note.style.cssText = \"position:fixed;bottom:20px;right:20px;background:#27ae60;color:white;padding:12px 20px;border-radius:8px;font-family:Arial,sans-serif;font-size:14px;z-index:2147483647;box-shadow:0 4px 12px rgba(0,0,0,0.3);\";\n  note.textContent = \"Playing...\";\n  document.body.appendChild(note);\n  \n  audio.play();\n  \n  audio.onended = function() {\n    note.remove();\n    audio.remove();\n  };\n  \n  audio.onerror = function() {\n    note.textContent = \"Error playing audio\";\n    note.style.background = \"#e74c3c\";\n    setTimeout(function() { note.remove(); }, 5000);\n    audio.remove();\n  };\n}",
+
+    "popup.html": "<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"UTF-8\">\n  <style>\n    body { width: 320px; padding: 20px; font-family: Arial, sans-serif; background: #1a1a2e; color: #eee; margin: 0; }\n    .header { display: flex; align-items: center; margin-bottom: 20px; }\n    .header img { width: 32px; height: 32px; margin-right: 10px; }\n    h1 { font-size: 18px; margin: 0; color: #fff; }\n    label { display: block; margin-bottom: 6px; font-size: 13px; color: #aaa; }\n    input { width: 100%; padding: 10px; margin-bottom: 16px; border: 1px solid #333; border-radius: 6px; background: #16213e; color: #fff; font-size: 14px; box-sizing: border-box; }\n    button { width: 100%; padding: 12px; background: #4a90d9; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 600; }\n    button:hover { background: #357abd; }\n    .status { margin-top: 12px; padding: 10px; border-radius: 6px; font-size: 13px; text-align: center; }\n    .instructions { margin-top: 20px; padding-top: 16px; border-top: 1px solid #333; font-size: 12px; color: #888; }\n    .shortcut { background: #16213e; padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #4a90d9; }\n  </style>\n</head>\n<body>\n  <div class=\"header\">\n    <img src=\"icons/icon-48.png\" alt=\"Autopage Reader\">\n    <h1>Autopage Reader</h1>\n  </div>\n  <label>ElevenLabs API Key</label>\n  <input type=\"password\" id=\"apiKey\" placeholder=\"sk_...\">\n  <label>Voice ID</label>\n  <input type=\"text\" id=\"voiceId\" placeholder=\"Enter Voice ID\">\n  <button id=\"saveBtn\">Save Settings</button>\n  <div id=\"status\" class=\"status\"></div>\n  <div class=\"instructions\">\n    <strong>How to use:</strong><br><br>\n    1. Highlight any text on a webpage<br>\n    2. Press <span class=\"shortcut\">Ctrl+Shift+S</span><br>\n    3. Listen to the text read aloud!\n  </div>\n  <script src=\"popup.js\"></script>\n</body>\n</html>",
+
+    "popup.js": "chrome.storage.local.get([\"apiKey\", \"voiceId\"], function(result) {\n  if (result.apiKey) document.getElementById(\"apiKey\").value = result.apiKey;\n  if (result.voiceId) document.getElementById(\"voiceId\").value = result.voiceId;\n});\n\ndocument.getElementById(\"saveBtn\").onclick = function() {\n  var apiKey = document.getElementById(\"apiKey\").value.trim();\n  var voiceId = document.getElementById(\"voiceId\").value.trim();\n  var status = document.getElementById(\"status\");\n  \n  if (!apiKey || !voiceId) {\n    status.textContent = \"Please fill in both fields\";\n    status.style.background = \"#e74c3c\";\n    return;\n  }\n  \n  chrome.storage.local.set({ apiKey: apiKey, voiceId: voiceId }, function() {\n    status.textContent = \"Settings saved!\";\n    status.style.background = \"#27ae60\";\n  });\n};"
+  },
+
+  "build_instructions": [
+    "1. Create a folder named 'autopage-reader-extension'",
+    "2. Inside that folder, create a subfolder named 'icons'",
+    "3. Create manifest.json in the root folder using the content from complete_source_code",
+    "4. Create background.js in the root folder",
+    "5. Create popup.html in the root folder",
+    "6. Create popup.js in the root folder",
+    "7. Add icon-16.png, icon-48.png, and icon-128.png to the icons folder",
+    "8. IMPORTANT: When saving files, use UTF-8 encoding without BOM",
+    "9. IMPORTANT: Use 'All Files (*.*)' as save type to prevent .txt extension",
+    "10. Load in Chrome: chrome://extensions > Developer mode ON > Load unpacked > Select folder"
+  ],
+
+  "testing_checklist": [
+    "Extension loads without errors in chrome://extensions",
+    "Extension icon appears in toolbar",
+    "Clicking icon opens settings popup",
+    "Settings save successfully (green confirmation)",
+    "Highlighting text and pressing Ctrl+Shift+S triggers speech",
+    "Blue 'Generating speech...' notification appears",
+    "Green 'Playing...' notification appears",
+    "Audio plays correctly",
+    "Notification disappears after audio ends"
+  ],
+
+  "troubleshooting": {
+    "extension_wont_load": [
+      "Check for syntax errors in manifest.json (use JSON validator)",
+      "Ensure all files are UTF-8 encoded",
+      "Move extension folder to non-cloud-synced location",
+      "Check that file extensions are correct (.js not .js.txt)"
+    ],
+    "save_button_not_working": [
+      "Ensure popup.js is a separate file (not inline in HTML)",
+      "Check popup.js is referenced correctly: <script src='popup.js'></script>",
+      "Reload extension after making changes"
+    ],
+    "keyboard_shortcut_not_working": [
+      "Check chrome://extensions/shortcuts for conflicts",
+      "Ensure 'scripting' permission is in manifest.json",
+      "Make sure you're on a regular webpage (not chrome:// pages)"
+    ],
+    "api_errors": [
+      "Verify API key is correct and has quota remaining",
+      "Verify Voice ID exists in your ElevenLabs account",
+      "Check browser console for detailed error messages"
+    ]
+  },
+
+  "chrome_web_store_requirements": {
+    "icons": "16x16, 48x48, 128x128 PNG files required",
+    "description": "Clear description under 132 characters for short, full description up to 16,000 characters",
+    "screenshots": "1280x800 or 640x400 PNG/JPEG, minimum 1, maximum 5",
+    "privacy_policy": "Required if extension handles user data",
+    "single_purpose": "Extension must have one clear purpose",
+    "permissions_justification": "Must explain why each permission is needed"
+  },
+
+  "future_enhancements": [
+    "Add stop/pause button during playback",
+    "Add playback speed control",
+    "Add right-click context menu option",
+    "Add voice selection dropdown",
+    "Add text-to-speech history",
+    "Add support for reading entire page",
+    "Add keyboard shortcut customization"
+  ]
+}
